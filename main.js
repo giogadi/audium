@@ -1,3 +1,10 @@
+// The maximum is exclusive and the minimum is inclusive
+function getRandomInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min)) + min;
+}
+
 const BASE_FREQS = [
     55.0000, // A
     58.2705, // A#
@@ -32,6 +39,14 @@ let currentSound = {
     lfo: null,
     eg: null
 }
+let targetSound = {
+    osc1: null,
+    osc2: null,
+    gain: null,
+    filter: null,
+    lfo: null,
+    eg: null
+}
 
 function playSound() {
     if (audioCtx === null) {
@@ -51,24 +66,51 @@ function playSound() {
         currentSound.gain.connect(audioCtx.destination);
         currentSound.osc.start();
         // currentSound.lfo.start();
-
         currentSound.eg = new EnvGen(audioCtx, currentSound.gain.gain);
         currentSound.eg.mode = 'AD';
         currentSound.eg.attackTime = 0.01;
         currentSound.eg.decayTime = 0.02;
+
+        targetSound.osc1 = audioCtx.createOscillator();
+        targetSound.osc1.type = 'sawtooth';
+        targetSound.osc1.frequency.setValueAtTime(
+            noteFrequency(30), audioCtx.currentTime);
+        targetSound.osc2 = audioCtx.createOscillator();
+        targetSound.osc2.type = 'sawtooth';
+        targetSound.osc2.frequency.setValueAtTime(
+            noteFrequency(30), audioCtx.currentTime);
+        targetSound.gain = audioCtx.createGain();
+        targetSound.gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        targetSound.filter = audioCtx.createBiquadFilter();
+        targetSound.osc1.connect(targetSound.filter);
+        targetSound.osc2.connect(targetSound.filter);
+        targetSound.lfo = audioCtx.createOscillator();
+        targetSound.lfo.type = 'sine';
+        targetSound.lfo.frequency.value = 3;
+        targetSound.lfo.connect(targetSound.gain.gain);
+        targetSound.filter.connect(targetSound.gain);
+        targetSound.gain.connect(audioCtx.destination);
+        targetSound.osc1.start();
+        targetSound.osc2.start();
+        // targetSound.lfo.start();
+        targetSound.eg = new EnvGen(audioCtx, targetSound.gain.gain);
+        targetSound.eg.mode = 'AD';
+        targetSound.eg.attackTime = 1.0;
+        targetSound.eg.decayTime = 1.0;
     }
 }
 
 let playButton = document.getElementById("play-button");
 playButton.onclick = playSound;
 
-const pattern = [30, 32, 34, 35];
+const pattern = [30, 32, 34, 35, 37, 39, 41, 42];
 
 const BPM = 480;
 const millisecondsPerBeat = 1 / (BPM / (60 * 1000));
 let timestampOfLastBeat = null;
-let currentBeatIndex = null;
-let playing = false;
+let currentBeatIndex = 0;
+let targetBeatIndex = null;
+let playing = true;
 function stepSound(timestamp) {
     if (currentSound.gain === null) {
         window.requestAnimationFrame(stepSound);
@@ -76,7 +118,6 @@ function stepSound(timestamp) {
     }
     if (!playing) {
         timestampOfLastBeat = null;
-        currentBeatIndex = null;
         window.requestAnimationFrame(stepSound);
         return;
     }
@@ -90,8 +131,20 @@ function stepSound(timestamp) {
         currentSound.osc.frequency.value =
             noteFrequency(pattern[currentBeatIndex]);
         currentSound.eg.gateOn();
-        currentBeatIndex = (currentBeatIndex + 1) % pattern.length;
         timestampOfLastBeat = timestamp;
+    }
+
+    if (targetBeatIndex === null ||
+        currentBeatIndex === targetBeatIndex) {
+        targetBeatIndex = getRandomInt(0, pattern.length);
+        if (targetBeatIndex === currentBeatIndex) {
+            targetBeatIndex = (targetBeatIndex + 1) % pattern.length;
+        }
+        targetSound.osc1.frequency.value =
+            noteFrequency(pattern[targetBeatIndex]);
+        targetSound.osc2.frequency.value =
+            targetSound.osc1.frequency.value * 1.01;
+        targetSound.eg.gateOn();
     }
 
     window.requestAnimationFrame(stepSound);
@@ -105,12 +158,24 @@ document.addEventListener('keydown', (event) => {
     }
     switch (event.key) {
     case " ":
-        playing = true;
+        playing = !playing;
+        return;
+    case "Left":
+    case "ArrowLeft":
+        if (currentBeatIndex === 0) {
+            currentBeatIndex = pattern.length - 1;
+        } else {
+            --currentBeatIndex;
+        }
+        return;
+    case "Right":
+    case "ArrowRight":
+        currentBeatIndex = (currentBeatIndex + 1) % pattern.length;
+        return;
     }
 });
-document.addEventListener('keyup', (event) => {
-    switch (event.key) {
-    case " ":
-        playing = false;
-    }
-});
+// document.addEventListener('keyup', (event) => {
+//     switch (event.key) {
+//     case " ":
+//     }
+// });
