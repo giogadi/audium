@@ -87,28 +87,39 @@ function startSound() {
         targetSound = makePolySynth(/*numOscillators*/1, audioCtx);
         targetSound.oscillators[0].type = 'sawtooth';
         targetSound.envelope.attackTime = 1.0;
-        targetSound.envelope.decayTime = 1.0;
+        targetSound.envelope.decayTime = 0.5;
     }
+}
+
+// This returns true if the current note is the first note of the
+// target pattern.
+function targetMet(targetPattern, currentNote) {
+    return targetPattern[0] === currentNote;
+}
+
+function fromBpmToMillisecondsPerBeat(bpm) {
+    return 1 / (bpm / (60 * 1000));
 }
 
 let playButton = document.getElementById("play-button");
 playButton.onclick = startSound;
 
-const pattern = [30, 32, 34, 35, 37, 39, 41, 42];
+const rootNotes = [30, 32, 34, 35, 37, 39, 41, 42];
 
-const BPM = 480;
-const millisecondsPerBeat = 1 / (BPM / (60 * 1000));
-let timestampOfLastBeat = null;
 let currentBeatIndex = 0;
 let targetBeatIndex = null;
 let playing = true;
+let currentRequested = false;
+let targetPattern = null;
+let targetPatternIx = null;
+const targetPatternBpm = 70;
+let timestampOfLastTargetSound = null;
 function stepSound(timestamp) {
     if (currentSound === null) {
         window.requestAnimationFrame(stepSound);
         return;
     }
     if (!playing) {
-        timestampOfLastBeat = null;
         window.requestAnimationFrame(stepSound);
         return;
     }
@@ -117,19 +128,28 @@ function stepSound(timestamp) {
         currentBeatIndex = 0;
     }
 
-    if (timestampOfLastBeat === null ||
-        timestamp - timestampOfLastBeat >= millisecondsPerBeat) {
-        playNotes(currentSound, [pattern[currentBeatIndex]]);
-        timestampOfLastBeat = timestamp;
+    if (currentRequested) {
+        playNotes(currentSound, [rootNotes[currentBeatIndex]]);
+        currentRequested = false;
     }
 
-    if (targetBeatIndex === null ||
-        currentBeatIndex === targetBeatIndex) {
-        targetBeatIndex = getRandomInt(0, pattern.length);
+    if (targetPattern === null ||
+        targetMet(targetPattern, rootNotes[currentBeatIndex])) {
+        targetBeatIndex = getRandomInt(0, rootNotes.length);
         if (targetBeatIndex === currentBeatIndex) {
-            targetBeatIndex = (targetBeatIndex + 1) % pattern.length;
+            targetBeatIndex = (targetBeatIndex + 1) % rootNotes.length;
         }
-        playNotes(targetSound, [pattern[targetBeatIndex]]);
+        let note = rootNotes[targetBeatIndex];
+        targetPattern = [note, note + 4];
+        targetPatternIx = 0;
+    }
+
+    if (timestampOfLastTargetSound === null ||
+        timestamp - timestampOfLastTargetSound >=
+        fromBpmToMillisecondsPerBeat(targetPatternBpm)) {
+        playNotes(targetSound, [targetPattern[targetPatternIx]]);
+        targetPatternIx = (targetPatternIx + 1) % targetPattern.length;
+        timestampOfLastTargetSound = timestamp;
     }
 
     window.requestAnimationFrame(stepSound);
@@ -145,22 +165,20 @@ document.addEventListener('keydown', (event) => {
     case " ":
         playing = !playing;
         return;
+    case "b":
+        currentRequested = true;
+        return;
     case "Left":
     case "ArrowLeft":
         if (currentBeatIndex === 0) {
-            currentBeatIndex = pattern.length - 1;
+            currentBeatIndex = rootNotes.length - 1;
         } else {
             --currentBeatIndex;
         }
         return;
     case "Right":
     case "ArrowRight":
-        currentBeatIndex = (currentBeatIndex + 1) % pattern.length;
+        currentBeatIndex = (currentBeatIndex + 1) % rootNotes.length;
         return;
     }
 });
-// document.addEventListener('keyup', (event) => {
-//     switch (event.key) {
-//     case " ":
-//     }
-// });
