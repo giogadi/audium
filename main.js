@@ -91,12 +91,6 @@ function startSound() {
     }
 }
 
-// This returns true if the current note is the first note of the
-// target pattern.
-function targetMet(targetPattern, currentNote) {
-    return targetPattern[0] === currentNote;
-}
-
 function fromBpmToMillisecondsPerBeat(bpm) {
     return 1 / (bpm / (60 * 1000));
 }
@@ -104,7 +98,9 @@ function fromBpmToMillisecondsPerBeat(bpm) {
 let playButton = document.getElementById("play-button");
 playButton.onclick = startSound;
 
-const rootNotes = [30, 32, 34, 35, 37, 39, 41, 42];
+// Last note of octave is 42
+const rootNotes = [30, 32, 34, 35, 37, 39, 41, 42, 44, 46, 47, 49];
+const lastIxOfOctave = 7;
 
 let currentBeatIndex = 0;
 let targetBeatIndex = null;
@@ -114,6 +110,7 @@ let targetPattern = null;
 let targetPatternIx = null;
 const targetPatternBpm = 70;
 let timestampOfLastTargetSound = null;
+let targetNote = null;
 function stepSound(timestamp) {
     if (currentSound === null) {
         window.requestAnimationFrame(stepSound);
@@ -134,14 +131,17 @@ function stepSound(timestamp) {
     }
 
     if (targetPattern === null ||
-        targetMet(targetPattern, rootNotes[currentBeatIndex])) {
-        targetBeatIndex = getRandomInt(0, rootNotes.length);
+        rootNotes[currentBeatIndex] === targetNote) {
+        targetBeatIndex = getRandomInt(0, lastIxOfOctave + 1);
         if (targetBeatIndex === currentBeatIndex) {
-            targetBeatIndex = (targetBeatIndex + 1) % rootNotes.length;
+            targetBeatIndex = (targetBeatIndex + 1) % (lastIxOfOctave + 1);
         }
-        let note = rootNotes[targetBeatIndex];
-        targetPattern = [note, note + 4];
+        let root = rootNotes[targetBeatIndex];
+        let third = rootNotes[targetBeatIndex + 2];
+        let fifth = rootNotes[targetBeatIndex + 4];
+        targetPattern = [root, fifth];
         targetPatternIx = 0;
+        targetNote = third;
     }
 
     if (timestampOfLastTargetSound === null ||
