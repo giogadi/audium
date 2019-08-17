@@ -32,76 +32,67 @@ function noteFrequency(note_ix) {
     return BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
 }
 
-let audioCtx = null;
-let currentSound = {
-    osc: null,
-    gain: null,
-    lfo: null,
-    eg: null
-}
-let targetSound = {
-    osc1: null,
-    osc2: null,
-    gain: null,
-    filter: null,
-    lfo: null,
-    eg: null
+function makePolySynth(numOscillators, audioCtx) {
+    let gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0.5;
+    gainNode.connect(audioCtx.destination);
+
+    let envelope = new EnvGen(audioCtx, gainNode.gain);
+    envelope.mode = 'AD';
+    envelope.attackTime = 0.01;
+    envelope.decayTime = 0.02;
+
+    let filterNode = audioCtx.createBiquadFilter();
+    filterNode.connect(gainNode);
+
+    let oscillators = [];
+    for (let i = 0; i < numOscillators; ++i) {
+        let osc = audioCtx.createOscillator();
+        osc.type = 'triangle';
+        osc.connect(filterNode);
+        osc.start();
+        oscillators.push(osc);
+    }
+
+    return {
+        gainNode: gainNode,
+        envelope: envelope,
+        filterNode: filterNode,
+        oscillators: oscillators
+    };
 }
 
-function playSound() {
+function playNotes(synth, notes) {
+    for (let noteIx = 0;
+         noteIx < notes.length && noteIx < synth.oscillators.length;
+         ++noteIx) {
+        synth.oscillators[noteIx].frequency.value =
+            noteFrequency(notes[noteIx]);
+    }
+    synth.envelope.gateOn();
+}
+
+let audioCtx = null;
+let currentSound = null;
+let targetSound = null;
+
+function startSound() {
     if (audioCtx === null) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-        currentSound.osc = audioCtx.createOscillator();
-        currentSound.osc.type = 'triangle';
-        currentSound.osc.frequency.setValueAtTime(
-            noteFrequency(30), audioCtx.currentTime);
-        currentSound.gain = audioCtx.createGain();
-        currentSound.gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        currentSound.lfo = audioCtx.createOscillator();
-        currentSound.lfo.type = 'sine';
-        currentSound.lfo.frequency.value = 120;
-        currentSound.lfo.connect(currentSound.gain.gain);
-        currentSound.osc.connect(currentSound.gain);
-        currentSound.gain.connect(audioCtx.destination);
-        currentSound.osc.start();
-        // currentSound.lfo.start();
-        currentSound.eg = new EnvGen(audioCtx, currentSound.gain.gain);
-        currentSound.eg.mode = 'AD';
-        currentSound.eg.attackTime = 0.01;
-        currentSound.eg.decayTime = 0.02;
+        currentSound = makePolySynth(/*numOscillators*/1, audioCtx);
+         // hopefully disables filter
+        currentSound.filterNode.frequency.value = 10000;
 
-        targetSound.osc1 = audioCtx.createOscillator();
-        targetSound.osc1.type = 'sawtooth';
-        targetSound.osc1.frequency.setValueAtTime(
-            noteFrequency(30), audioCtx.currentTime);
-        targetSound.osc2 = audioCtx.createOscillator();
-        targetSound.osc2.type = 'sawtooth';
-        targetSound.osc2.frequency.setValueAtTime(
-            noteFrequency(30), audioCtx.currentTime);
-        targetSound.gain = audioCtx.createGain();
-        targetSound.gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        targetSound.filter = audioCtx.createBiquadFilter();
-        targetSound.osc1.connect(targetSound.filter);
-        targetSound.osc2.connect(targetSound.filter);
-        targetSound.lfo = audioCtx.createOscillator();
-        targetSound.lfo.type = 'sine';
-        targetSound.lfo.frequency.value = 3;
-        targetSound.lfo.connect(targetSound.gain.gain);
-        targetSound.filter.connect(targetSound.gain);
-        targetSound.gain.connect(audioCtx.destination);
-        targetSound.osc1.start();
-        targetSound.osc2.start();
-        // targetSound.lfo.start();
-        targetSound.eg = new EnvGen(audioCtx, targetSound.gain.gain);
-        targetSound.eg.mode = 'AD';
-        targetSound.eg.attackTime = 1.0;
-        targetSound.eg.decayTime = 1.0;
+        targetSound = makePolySynth(/*numOscillators*/1, audioCtx);
+        targetSound.oscillators[0].type = 'sawtooth';
+        targetSound.envelope.attackTime = 1.0;
+        targetSound.envelope.decayTime = 1.0;
     }
 }
 
 let playButton = document.getElementById("play-button");
-playButton.onclick = playSound;
+playButton.onclick = startSound;
 
 const pattern = [30, 32, 34, 35, 37, 39, 41, 42];
 
@@ -112,7 +103,7 @@ let currentBeatIndex = 0;
 let targetBeatIndex = null;
 let playing = true;
 function stepSound(timestamp) {
-    if (currentSound.gain === null) {
+    if (currentSound === null) {
         window.requestAnimationFrame(stepSound);
         return;
     }
@@ -128,9 +119,7 @@ function stepSound(timestamp) {
 
     if (timestampOfLastBeat === null ||
         timestamp - timestampOfLastBeat >= millisecondsPerBeat) {
-        currentSound.osc.frequency.value =
-            noteFrequency(pattern[currentBeatIndex]);
-        currentSound.eg.gateOn();
+        playNotes(currentSound, [pattern[currentBeatIndex]]);
         timestampOfLastBeat = timestamp;
     }
 
@@ -140,11 +129,7 @@ function stepSound(timestamp) {
         if (targetBeatIndex === currentBeatIndex) {
             targetBeatIndex = (targetBeatIndex + 1) % pattern.length;
         }
-        targetSound.osc1.frequency.value =
-            noteFrequency(pattern[targetBeatIndex]);
-        targetSound.osc2.frequency.value =
-            targetSound.osc1.frequency.value * 1.01;
-        targetSound.eg.gateOn();
+        playNotes(targetSound, [pattern[targetBeatIndex]]);
     }
 
     window.requestAnimationFrame(stepSound);
